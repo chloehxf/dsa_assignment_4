@@ -1,8 +1,9 @@
 from flask import render_template, flash, redirect, url_for, request
 from flaskapp import app, db
-from flaskapp.models import BlogPost, IpView, Day
+from flaskapp.models import BlogPost, IpView, Day, UkData
 from flaskapp.forms import PostForm
 import datetime
+import statsmodels
 
 import pandas as pd
 import json
@@ -36,6 +37,110 @@ def new_post():
         flash('Your post has been created!', 'success')
         return redirect(url_for('home'))
     return render_template('create_post.html', title='New Post', form=form)
+
+
+# • Who are you displaying this data for?
+# • What do they want out of it?
+# • What is important for them to understand?
+# • What are they using it for?
+
+# Route to UK chart
+@app.route('/uk')
+def uk():
+    uk = UkData.query.all()
+    data = pd.DataFrame([{
+        'TotalVote': row.TotalVote19,
+        'BrexitVote': row.BrexitVote19,
+        'Region': row.region}
+        for row in uk])
+
+    # Aggregate the data by Region
+    aggregated_data = data.groupby('Region').agg({
+        'TotalVote': 'sum',  # Sum of TotalVote per Region
+        'BrexitVote': 'sum'  # Sum of BrexitVote per Region
+    }).reset_index()
+
+    # Calculate the percentage of BrexitVote relative to TotalVote
+    aggregated_data['BrexitVotePercentage'] = (aggregated_data['BrexitVote'] / aggregated_data['TotalVote']) * 100
+    aggregated_data['TotalVotePercentage'] = 100 - aggregated_data['BrexitVotePercentage']
+
+    # Reshape the data to long format for the stacked bar chart
+    df_long = aggregated_data.melt(id_vars=["Region"], value_vars=["BrexitVotePercentage", "TotalVotePercentage"], 
+                                var_name="Metric", value_name="Percentage")
+
+    # Specify colors for the bar chart
+    legend_color = {
+        'BrexitVotePercentage': 'darkblue',
+        'TotalVotePercentage': 'lightgray'
+    }
+
+    # Create bar chart
+    fig = px.bar(df_long, x='Region', y='Percentage', color='Metric', 
+                title='Percentage Brexit Vote per Region', 
+                labels={'Percentage': 'Percentage of Brexit Vote (%)', 'Region': 'Region', 'Metric': 'Vote Type'},
+                barmode='stack', color_discrete_map=legend_color)
+
+
+    fig.show()
+    # Convert to JSON to render to Flask
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    return render_template('uk.html', title='Percentage of Brexit Vote per UK Region (2019)', graphJSON=graphJSON)
+
+@app.route('/uk2')
+def uk2():
+    uk = UkData.query.all()
+    df = pd.DataFrame([{
+        'Constituency': row.constituency_name,
+        'BrexitVote19': row.BrexitVote19,
+        'c11Female': row.c11Female,
+        'c11HouseholdMarried': row.c11HouseholdMarried,
+        'c11HouseOwned': row.c11HouseOwned,
+        'c11Retired': row.c11Retired,
+        'c11FulltimeStudent': row.c11FulltimeStudent
+        } for row in uk])
+    # fig = px.bar(df, x='Region', y='Turnout')
+    # Initial scatter plot (BrexitVote19 vs c11Female)
+    fig = px.scatter(df,
+                 x='BrexitVote19',
+                 y='c11Female',
+                 hover_name='Constituency',
+                 title='Demographics (2011) of the Brexit Vote (2019)',
+                 labels={'BrexitVote19': 'Brexit Vote', 'c11Female': 'Female (%)'})
+
+    # Create dropdown buttons for other y-axis options
+    y_vars = {
+        'c11Female': 'Female (%)',
+        'c11HouseholdMarried': 'Married Households (%)',
+        'c11HouseOwned': 'House Owned (%)',
+        'c11Retired': 'Retired (%)',
+        'c11FulltimeStudent': 'Full-time Students (%)'
+    }
+
+    dropdown_buttons = [
+    {
+        'label': label,
+        'method': 'update',
+        'args': [
+            {'y': [df[col]]},
+            {'yaxis': {'title': label}}  # Set axis label and fixed range
+        ]
+    }
+    for col, label in y_vars.items()
+]
+
+    fig.update_layout(
+        updatemenus=[{
+            'type': 'buttons',
+            'buttons': dropdown_buttons,
+            'direction': 'down',
+            'showactive': True,
+            'xanchor': 'right'
+        }]
+    )
+    # Set aesthetics of chart
+    fig.update_traces(marker=dict(size=10, color='orange', opacity=0.6))
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    return render_template('uk.html', title='Demographics (2011) of the Brexit Vote (2019)', graphJSON=graphJSON)
 
 
 # Route to the dashboard page

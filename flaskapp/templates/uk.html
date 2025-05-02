@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block content %}
+    <h1>{{ title }}</h1>
+    <div class="container">
+        <p>
+            <li><b>Who are you displaying this data for?</b>: Policymaker</li>
+            <li><b>What do they want out of it?</b>: Understand the demographic profiles of the Brexit vote</li>
+            <li><b>What is important for them to understand?</b>: Whether the Brexit vote was concentrated in certain demographic subgroups</li>
+            <li><b>What are they using it for?</b>: To inform future policies post-Brexit knowing which groups were unsatisfied with the status quo prior to the Brexit vote</li>
+        </p>
+    </div>
+    <div id='chart' class='chart'></div>
+    <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+    <script type='text/javascript'>
+        var graphs = {{graphJSON | safe}};
+        Plotly.plot('chart',graphs,{});
+    </script>
+{% endblock %}
